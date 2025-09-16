@@ -1,0 +1,75 @@
+# Starter pipeline
+# Start with a minimal pipeline that you can customize to build and deploy your code.
+# Add steps that build, run tests, deploy, and more:
+# https://aka.ms/yaml
+
+trigger:
+- master
+
+pool:
+  vmImage: ubuntu-latest
+
+variables:
+  # Pipeline configuration
+  - name: buildConfiguration
+    value: 'Release'
+  - name: deploymentPath
+    value: '$(Pipeline.Workspace)/deployment'
+  - name: artifactName
+    value: 'financial-pipeline-$(Build.BuildNumber)'
+
+stages:
+- stage: 'PerformanceComparison'
+  displayName: 'Checkout Performance Comparison'
+  jobs:
+  
+  - job: 'TraditionalCheckout'
+    displayName: 'Traditional Full Repository Checkout'
+    steps:
+    
+    - script: echo "🐌 TRADITIONAL CHECKOUT - Starting full repository download..."
+      displayName: 'Log Traditional Checkout Start'
+    
+    - script: |
+        echo "Simulating traditional CI/CD checkout process..."
+        echo "This approach downloads ENTIRE repository (70+ files)"
+        echo "Starting timer..."
+        date '+%Y-%m-%d %H:%M:%S' > /tmp/start_time_traditional
+      displayName: 'Start Performance Timer'
+    
+    # Traditional checkout - Downloads EVERYTHING
+    - checkout: self
+      displayName: 'Checkout Full Repository (Traditional Method)'
+      fetchDepth: 0  # Full history - SLOW!
+      # No sparse checkout = All files downloaded
+    
+    - script: |
+        echo "✅ Traditional checkout completed"
+        echo "📊 Repository Statistics:"
+        echo "Total directories: $(find . -type d | wc -l)"
+        echo "Total files: $(find . -type f | wc -l)" 
+        echo "Repository size: $(du -sh . | cut -f1)"
+        echo ""
+        echo "🎯 Files in deployment list: $(wc -l < deployment/deploy-list.txt)"
+        echo "📈 Efficiency ratio: $(echo "scale=2; $(wc -l < deployment/deploy-list.txt) / $(find . -name '*.py' -o -name '*.sql' -o -name '*.json' | wc -l) * 100" | bc)%"
+        
+        # Calculate elapsed time
+        start_time=$(cat /tmp/start_time_traditional)
+        echo "⏱️  Start time: $start_time"
+        echo "⏱️  End time: $(date '+%Y-%m-%d %H:%M:%S')"
+        echo ""
+        echo "❌ PROBLEM: Downloaded unnecessary files:"
+        echo "   - All 20 DAG files (only need 3)"
+        echo "   - All metadata schemas (only need 2)" 
+        echo "   - All data models (only need 4)"
+        echo "   - Tests, docs, utilities not needed for this deployment"
+      displayName: 'Analyze Traditional Checkout Results'
+    
+    - script: |
+        echo "📦 Simulating deployment package creation..."
+        echo "Reading deployment manifest..."
+        cat deployment/deploy-list.txt
+        echo ""
+        echo "🔍 Traditional approach would still package only needed files"
+        echo "💡 But we downloaded 7x more files than necessary!"
+      displayName: 'Simulate Traditional Packaging'
