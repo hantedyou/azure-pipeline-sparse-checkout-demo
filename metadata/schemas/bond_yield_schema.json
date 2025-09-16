@@ -1,0 +1,44 @@
+{
+  "table_name": "bond_yield",
+  "schema": "staging",
+  "columns": [
+    {
+      "name": "id",
+      "type": "BIGINT",
+      "nullable": false,
+      "primary_key": true
+    },
+    {
+      "name": "symbol",
+      "type": "VARCHAR(10)",
+      "nullable": false
+    },
+    {
+      "name": "price",
+      "type": "DECIMAL(18,6)",
+      "nullable": true
+    },
+    {
+      "name": "volume",
+      "type": "BIGINT",
+      "nullable": true
+    },
+    {
+      "name": "timestamp",
+      "type": "TIMESTAMP",
+      "nullable": false
+    },
+    {
+      "name": "created_at",
+      "type": "TIMESTAMP",
+      "nullable": false
+    }
+  ],
+  "partitions": [
+    "DATE(timestamp)"
+  ],
+  "indexes": [
+    "symbol",
+    "timestamp"
+  ]
+}

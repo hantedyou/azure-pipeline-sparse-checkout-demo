@@ -1,0 +1,14 @@
+# Deployment List for Sparse Checkout Demo
+# Format: one file path per line
+# This list simulates a partial deployment
+
+dags/stock_price_ingestion.py
+dags/bond_yield_analysis.py
+dags/forex_rates_pipeline.py
+metadata/schemas/stock_price_schema.json
+metadata/schemas/bond_yield_schema.json
+data_model/staging/stg_stock_prices.sql
+data_model/staging/stg_bond_yields.sql
+dbt/models/staging/stg_stock_prices.sql
+dbt/models/staging/stg_bond_yields.sql
+dbt/models/marts/fact_daily_prices.sql

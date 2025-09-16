@@ -1,0 +1,12 @@
+# Azure DevOps Variables Template
+# Generated for Sparse Checkout Demo
+
+variables:
+  - name: 'shallow_fetch_depth'
+    value: '5'
+  - name: 'target_environment' 
+    value: 'staging'
+  - name: 'deployment_path'
+    value: '/opt/financial-pipeline'
+  - name: 'artifact_name'
+    value: 'financial-pipeline-$(Build.BuildNumber)'
