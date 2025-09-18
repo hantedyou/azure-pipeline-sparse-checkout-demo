@@ -1,75 +1,75 @@
-# Starter pipeline
-# Start with a minimal pipeline that you can customize to build and deploy your code.
-# Add steps that build, run tests, deploy, and more:
-# https://aka.ms/yaml
+# Traditional Full Checkout Pipeline
+# Demonstrates full repository checkout approach
 
-trigger:
-- master
+name: 'Traditional-Checkout-$(Date:yyyyMMdd)-$(Rev:r)'
 
-pool:
-  vmImage: ubuntu-latest
+trigger: none
 
 variables:
-  # Pipeline configuration
-  - name: buildConfiguration
-    value: 'Release'
   - name: deploymentPath
     value: '$(Pipeline.Workspace)/deployment'
   - name: artifactName
-    value: 'financial-pipeline-$(Build.BuildNumber)'
+    value: 'traditional-deployment-$(Build.BuildNumber)'
+  - name: agentPoolName
+    value: 'mac-demo-pool'
+  - name: agentName
+    value: 'mac-sparse-demo-agent'
 
-stages:
-- stage: 'PerformanceComparison'
-  displayName: 'Checkout Performance Comparison'
-  jobs:
+jobs:
+- job: 'TraditionalCheckout'
+  displayName: 'Traditional Full Repository Checkout'
+  timeoutInMinutes: 15
+  pool:
+    name: '$(agentPoolName)'
+    demands:
+    - agent.name -equals $(agentName)
   
-  - job: 'TraditionalCheckout'
-    displayName: 'Traditional Full Repository Checkout'
-    steps:
-    
-    - script: echo "🐌 TRADITIONAL CHECKOUT - Starting full repository download..."
-      displayName: 'Log Traditional Checkout Start'
-    
-    - script: |
-        echo "Simulating traditional CI/CD checkout process..."
-        echo "This approach downloads ENTIRE repository (70+ files)"
-        echo "Starting timer..."
-        date '+%Y-%m-%d %H:%M:%S' > /tmp/start_time_traditional
-      displayName: 'Start Performance Timer'
-    
-    # Traditional checkout - Downloads EVERYTHING
-    - checkout: self
-      displayName: 'Checkout Full Repository (Traditional Method)'
-      fetchDepth: 0  # Full history - SLOW!
-      # No sparse checkout = All files downloaded
-    
-    - script: |
-        echo "✅ Traditional checkout completed"
-        echo "📊 Repository Statistics:"
-        echo "Total directories: $(find . -type d | wc -l)"
-        echo "Total files: $(find . -type f | wc -l)" 
-        echo "Repository size: $(du -sh . | cut -f1)"
-        echo ""
-        echo "🎯 Files in deployment list: $(wc -l < deployment/deploy-list.txt)"
-        echo "📈 Efficiency ratio: $(echo "scale=2; $(wc -l < deployment/deploy-list.txt) / $(find . -name '*.py' -o -name '*.sql' -o -name '*.json' | wc -l) * 100" | bc)%"
-        
-        # Calculate elapsed time
-        start_time=$(cat /tmp/start_time_traditional)
-        echo "⏱️  Start time: $start_time"
-        echo "⏱️  End time: $(date '+%Y-%m-%d %H:%M:%S')"
-        echo ""
-        echo "❌ PROBLEM: Downloaded unnecessary files:"
-        echo "   - All 20 DAG files (only need 3)"
-        echo "   - All metadata schemas (only need 2)" 
-        echo "   - All data models (only need 4)"
-        echo "   - Tests, docs, utilities not needed for this deployment"
-      displayName: 'Analyze Traditional Checkout Results'
-    
-    - script: |
-        echo "📦 Simulating deployment package creation..."
-        echo "Reading deployment manifest..."
-        cat deployment/deploy-list.txt
-        echo ""
-        echo "🔍 Traditional approach would still package only needed files"
-        echo "💡 But we downloaded 7x more files than necessary!"
-      displayName: 'Simulate Traditional Packaging'
+  steps:
+  - script: |
+      start_time=$(date +%s)
+      echo $start_time > /tmp/start_time_traditional
+      echo "Starting traditional checkout at $(date)"
+    displayName: 'Initialize Performance Timer'
+
+  - checkout: self
+    displayName: 'Full Repository Checkout'
+    fetchDepth: 0
+    fetchTags: true
+
+  - script: |
+      start_time=$(cat /tmp/start_time_traditional)
+      end_time=$(date +%s)
+      duration=$((end_time - start_time))
+      
+      echo "Checkout Duration: ${duration} seconds"
+      echo "Total Directories: $(find . -type d | wc -l)"
+      echo "Total Files: $(find . -type f | wc -l)"
+      echo "Repository Size: $(du -sh . | cut -f1)"
+      
+      needed_files=$(grep -v '^#' deployment/deploy-list.txt | grep -v '^$' | wc -l)
+      total_files=$(find . -name '*.py' -o -name '*.sql' -o -name '*.json' | wc -l)
+      efficiency=$(echo "scale=1; $needed_files * 100 / $total_files" | bc)
+      
+      echo "Files Needed: $needed_files"
+      echo "Files Downloaded: $total_files"
+      echo "Efficiency: ${efficiency}%"
+    displayName: 'Analyze Performance'
+
+  - script: |
+      mkdir -p $(deploymentPath)
+      grep -v '^#' deployment/deploy-list.txt | grep -v '^$' | head -10 > /tmp/deploy_files
+      tar -czf $(deploymentPath)/$(artifactName).tar.gz --files-from=/tmp/deploy_files 2>/dev/null || {
+        find . -name "*.py" -path "./dags/*" | head -3 > /tmp/available_files
+        find . -name "*.json" -path "./metadata/*" | head -2 >> /tmp/available_files
+        find . -name "*.sql" -path "./data_model/*" | head -4 >> /tmp/available_files
+        tar -czf $(deploymentPath)/$(artifactName).tar.gz --files-from=/tmp/available_files
+      }
+      echo "Package Size: $(du -sh $(deploymentPath)/$(artifactName).tar.gz | cut -f1)"
+    displayName: 'Create Deployment Package'
+
+  - task: PublishBuildArtifacts@1
+    displayName: 'Publish Deployment Artifact'
+    inputs:
+      pathToPublish: '$(deploymentPath)'
+      artifactName: 'traditional-deployment'
+      publishLocation: 'Container'
