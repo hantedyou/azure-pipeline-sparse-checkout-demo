@@ -3,6 +3,17 @@
 
 name: 'Traditional-Checkout-$(Date:yyyyMMdd)-$(Rev:r)'
 
+parameters:
+- name: agentPoolName
+  displayName: 'Agent Pool Name'
+  type: string
+  default: 'mac-demo-pool'
+  
+- name: agentName
+  displayName: 'Agent Name'
+  type: string
+  default: 'mac-sparse-demo-agent'
+
 trigger: none
 
 variables:
@@ -10,19 +21,15 @@ variables:
     value: '$(Pipeline.Workspace)/deployment'
   - name: artifactName
     value: 'traditional-deployment-$(Build.BuildNumber)'
-  - name: agentPoolName
-    value: 'mac-demo-pool'
-  - name: agentName
-    value: 'mac-sparse-demo-agent'
 
 jobs:
 - job: 'TraditionalCheckout'
   displayName: 'Traditional Full Repository Checkout'
   timeoutInMinutes: 15
   pool:
-    name: '$(agentPoolName)'
+    name: '${{ parameters.agentPoolName }}'
     demands:
-    - agent.name -equals $(agentName)
+    - agent.name -equals ${{ parameters.agentName }}
   
   steps:
   - script: |
