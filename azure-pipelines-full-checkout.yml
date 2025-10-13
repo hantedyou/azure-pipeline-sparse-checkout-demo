@@ -1,0 +1,233 @@
+# Traditional Full Checkout Pipeline
+# Demonstrates full repository checkout approach with complete CI/CD workflow
+name: 'Traditional-Checkout-$(Date:yyyyMMdd)-$(Rev:r)'
+
+parameters:
+- name: agentPoolName
+  displayName: 'Agent Pool Name'
+  type: string
+  default: 'mac-demo-pool'
+  
+- name: agentName
+  displayName: 'Agent Name'
+  type: string
+  default: 'mac-sparse-demo-agent'
+
+- name: deploymentEnvironment
+  displayName: 'Deployment Environment'
+  type: string
+  default: 'demo'
+  values:
+  - demo
+  - dev
+  - staging
+  - prod
+
+trigger: none
+
+variables:
+  - name: dropPath
+    value: '$(Build.ArtifactStagingDirectory)/drop'
+  - name: diffPath
+    value: '$(Build.ArtifactStagingDirectory)/diff'
+  - name: buildNumber
+    value: '$(Build.BuildNumber)'
+  - name: deployListFile
+    value: 'deployment/deploy-list.txt'
+
+jobs:
+- job: 'TraditionalCheckoutBuild'
+  displayName: 'Traditional Full Repository Checkout & Build'
+  timeoutInMinutes: 20
+  pool:
+    name: '${{ parameters.agentPoolName }}'
+    demands:
+    - agent.name -equals ${{ parameters.agentName }}
+  
+  steps:
+  # Step 0: Initialize Performance Tracking
+  - script: |
+      echo "=== Traditional Checkout Pipeline Started ==="
+      start_time=$(date +%s)
+      echo "##vso[task.setvariable variable=pipelineStartTime]$start_time"
+      echo "##vso[task.setvariable variable=checkoutStartTime]$start_time"
+      echo "Pipeline started at: $(date)"
+      echo "Build Number: $(buildNumber)"
+      echo "Environment: ${{ parameters.deploymentEnvironment }}"
+    displayName: 'Initialize Performance Timer'
+
+  # Step 1: Full Repository Checkout (This is the bottleneck)
+  - checkout: self
+    displayName: 'Full Repository Checkout - Complete History'
+    fetchDepth: 0
+    fetchTags: true
+    clean: true
+
+  # Step 2: Analyze Checkout Performance
+  - script: |
+      checkout_start=$(checkoutStartTime)
+      checkout_end=$(date +%s)
+      checkout_duration=$((checkout_end - checkout_start))
+      
+      echo "=== Checkout Performance Analysis ==="
+      echo "Checkout Duration: ${checkout_duration} seconds"
+      echo "Total Directories: $(find . -type d | wc -l)"
+      echo "Total Files: $(find . -type f | wc -l)"
+      echo "Repository Size: $(du -sh . | cut -f1)"
+      echo "Git Objects: $(find .git/objects -type f | wc -l)"
+      
+      if [ -f "$(deployListFile)" ]; then
+        needed_files=$(grep -v '^#' $(deployListFile) | grep -v '^$' | wc -l)
+        total_files=$(find . -name '*.py' -o -name '*.sql' -o -name '*.json' -o -name '*.yml' | wc -l)
+        efficiency=$(echo "scale=1; $needed_files * 100 / $total_files" | bc -l 2>/dev/null || echo "0")
+        
+        echo "Files Needed for Deployment: $needed_files"
+        echo "Total Repository Files: $total_files"
+        echo "Deployment Efficiency: ${efficiency}%"
+        echo "Wasted Downloads: $((total_files - needed_files)) files"
+      else
+        echo "Deploy list file not found: $(deployListFile)"
+      fi
+      
+      echo "##vso[task.setvariable variable=checkoutDuration]$checkout_duration"
+    displayName: 'Analyze Checkout Performance'
+
+  # Step 3: Create Drop Package
+  - script: |
+      echo "=== Creating Deployment Drop Package ==="
+      drop_start=$(date +%s)
+      
+      mkdir -p $(dropPath)
+      mkdir -p $(diffPath)
+      
+      if [ -f "$(deployListFile)" ]; then
+        echo "Processing deployment list from $(deployListFile)"
+        grep -v '^#' $(deployListFile) | grep -v '^$' > /tmp/clean_deploy_list.txt
+        
+        while IFS= read -r file_path; do
+          if [ -f "$file_path" ]; then
+            target_dir="$(dropPath)/$(dirname "$file_path")"
+            mkdir -p "$target_dir"
+            cp "$file_path" "$(dropPath)/$file_path"
+            echo "Added to drop: $file_path"
+          else
+            echo "Warning: File not found: $file_path"
+          fi
+        done < /tmp/clean_deploy_list.txt
+        
+        rm -f /tmp/clean_deploy_list.txt
+        drop_files=$(find $(dropPath) -type f | wc -l)
+        echo "Drop package created with $drop_files files"
+      else
+        echo "Deploy list not found, creating sample drop"
+        find . -name "*.py" -path "./dags/*" | head -5 | while read file; do
+          target_dir="$(dropPath)/$(dirname "$file")"
+          mkdir -p "$target_dir"
+          cp "$file" "$(dropPath)/$file"
+        done
+      fi
+      
+      cd $(dropPath)
+      tar -czf ../drop-$(buildNumber).tar.gz .
+      cd - > /dev/null
+      
+      drop_end=$(date +%s)
+      drop_duration=$((drop_end - drop_start))
+      drop_size=$(du -sh $(dropPath) | cut -f1)
+      
+      echo "Drop creation time: ${drop_duration} seconds"
+      echo "Drop size: $drop_size"
+      
+      echo "##vso[task.setvariable variable=dropDuration]$drop_duration"
+    displayName: 'Create Deployment Drop Package'
+
+  # Step 4: Generate Diff Files
+  - script: |
+      echo "=== Generating Diff Files ==="
+      diff_start=$(date +%s)
+      
+      echo "Content Diff Report - Build $(buildNumber)" > $(diffPath)/Content_Diff.txt
+      echo "Generated at: $(date)" >> $(diffPath)/Content_Diff.txt
+      echo "Deployment Environment: ${{ parameters.deploymentEnvironment }}" >> $(diffPath)/Content_Diff.txt
+      echo "" >> $(diffPath)/Content_Diff.txt
+      echo "DEPLOYMENT SUMMARY" >> $(diffPath)/Content_Diff.txt
+      echo "Build: $(buildNumber)" >> $(diffPath)/Content_Diff.txt
+      echo "Environment: ${{ parameters.deploymentEnvironment }}" >> $(diffPath)/Content_Diff.txt
+      echo "Files in Drop: $(find $(dropPath) -type f | wc -l)" >> $(diffPath)/Content_Diff.txt
+      echo "" >> $(diffPath)/Content_Diff.txt
+      echo "CHANGED FILES" >> $(diffPath)/Content_Diff.txt
+      
+      find $(dropPath) -type f | sed 's|$(dropPath)/||' | while read file; do
+        echo "M    $file" >> $(diffPath)/Content_Diff.txt
+      done
+      
+      echo "File Diff Report - Build $(buildNumber)" > $(diffPath)/File_Diff.txt
+      echo "Generated at: $(date)" >> $(diffPath)/File_Diff.txt
+      echo "" >> $(diffPath)/File_Diff.txt
+      
+      find $(dropPath) -type f | while read file; do
+        relative_path=$(echo "$file" | sed 's|$(dropPath)/||')
+        file_size=$(stat -f%z "$file" 2>/dev/null || stat -c%s "$file" 2>/dev/null || echo "unknown")
+        echo "$relative_path|$file_size" >> $(diffPath)/File_Diff.txt
+      done
+      
+      diff_end=$(date +%s)
+      diff_duration=$((diff_end - diff_start))
+      
+      echo "Diff generation time: ${diff_duration} seconds"
+      
+      echo "##vso[task.setvariable variable=diffDuration]$diff_duration"
+    displayName: 'Generate Diff Files'
+
+  # Step 5: Publish Drop Artifact
+  - task: PublishBuildArtifacts@1
+    displayName: 'Publish Artifact: Drop'
+    inputs:
+      pathToPublish: '$(dropPath)'
+      artifactName: 'drop'
+      publishLocation: 'Container'
+
+  # Step 6: Publish Diff Artifact
+  - task: PublishBuildArtifacts@1
+    displayName: 'Publish Artifact: Diff'
+    inputs:
+      pathToPublish: '$(diffPath)'
+      artifactName: 'diff'
+      publishLocation: 'Container'
+
+  # Step 7: Performance Summary
+  - script: |
+      echo "=== TRADITIONAL PIPELINE PERFORMANCE SUMMARY ==="
+      
+      pipeline_start=$(pipelineStartTime)
+      pipeline_end=$(date +%s)
+      total_duration=$((pipeline_end - pipeline_start))
+      
+      checkout_duration=$(checkoutDuration)
+      drop_duration=$(dropDuration)
+      diff_duration=$(diffDuration)
+      
+      echo "Total Pipeline Duration: ${total_duration} seconds"
+      echo "  - Checkout Time: ${checkout_duration} seconds"
+      echo "  - Drop Creation: ${drop_duration} seconds"
+      echo "  - Diff Generation: ${diff_duration} seconds"
+      echo ""
+      echo "Repository Analysis:"
+      echo "  - Repository Size: $(du -sh . | cut -f1)"
+      echo "  - Drop Size: $(du -sh $(dropPath) | cut -f1)"
+      echo "  - Files Downloaded: $(find . -type f | wc -l)"
+      echo "  - Files Actually Needed: $(find $(dropPath) -type f | wc -l)"
+      echo ""
+      echo "INEFFICIENCY ANALYSIS"
+      
+      needed_files=$(find $(dropPath) -type f | wc -l)
+      total_files=$(find . -type f | wc -l)
+      wasted_files=$((total_files - needed_files))
+      efficiency=$(echo "scale=1; $needed_files * 100 / $total_files" | bc -l)
+      
+      echo "Files Downloaded but Not Needed: $wasted_files"
+      echo "Deployment Efficiency: ${efficiency}%"
+      echo ""
+      echo "Note: Azure DevOps will automatically clean up the agent workspace."
+      
+    displayName: 'Performance Summary & Metrics'
