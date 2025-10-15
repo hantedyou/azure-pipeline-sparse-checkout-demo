@@ -1,0 +1,20 @@
+# Audit Logging Configuration
+# Generated for Azure DevOps Sparse Checkout Demo
+
+production:
+  host: prod-db.company.com
+  port: 5432
+  database: financial_dw
+  schema: audit
+  
+staging:
+  host: staging-db.company.com  
+  port: 5432
+  database: financial_dw_staging
+  schema: audit
+
+development:
+  host: dev-db.company.com
+  port: 5432
+  database: financial_dw_dev
+  schema: audit

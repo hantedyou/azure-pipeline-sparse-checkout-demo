@@ -24,7 +24,7 @@ dag = DAG(
     description='Process regulatory reporting pipeline for financial analysis',
     schedule_interval='@daily',
     catchup=False,
-    tags=['risk', 'real_time']
+    tags=['compliance', 'reporting']
 )
 
 def extract_data():

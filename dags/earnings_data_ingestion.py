@@ -24,7 +24,7 @@ dag = DAG(
     description='Process earnings data ingestion for financial analysis',
     schedule_interval='@daily',
     catchup=False,
-    tags=['compliance', 'trading']
+    tags=['risk', 'trading']
 )
 
 def extract_data():

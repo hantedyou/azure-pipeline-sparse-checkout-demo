@@ -1,0 +1,20 @@
+# Vendor Connections Configuration
+# Generated for Azure DevOps Sparse Checkout Demo
+
+production:
+  host: prod-db.company.com
+  port: 5432
+  database: financial_dw
+  schema: vendor
+  
+staging:
+  host: staging-db.company.com  
+  port: 5432
+  database: financial_dw_staging
+  schema: vendor
+
+development:
+  host: dev-db.company.com
+  port: 5432
+  database: financial_dw_dev
+  schema: vendor

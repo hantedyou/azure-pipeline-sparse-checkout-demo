@@ -24,7 +24,7 @@ dag = DAG(
     description='Process portfolio valuation etl for financial analysis',
     schedule_interval='@daily',
     catchup=False,
-    tags=['risk', 'trading']
+    tags=['trading', 'market_data']
 )
 
 def extract_data():

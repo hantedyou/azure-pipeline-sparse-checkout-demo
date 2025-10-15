@@ -1,0 +1,20 @@
+# Sla Definitions Configuration
+# Generated for Azure DevOps Sparse Checkout Demo
+
+production:
+  host: prod-db.company.com
+  port: 5432
+  database: financial_dw
+  schema: sla
+  
+staging:
+  host: staging-db.company.com  
+  port: 5432
+  database: financial_dw_staging
+  schema: sla
+
+development:
+  host: dev-db.company.com
+  port: 5432
+  database: financial_dw_dev
+  schema: sla

@@ -24,7 +24,7 @@ dag = DAG(
     description='Process bond yield analysis for financial analysis',
     schedule_interval='@daily',
     catchup=False,
-    tags=['compliance', 'reporting']
+    tags=['reporting', 'market_data']
 )
 
 def extract_data():

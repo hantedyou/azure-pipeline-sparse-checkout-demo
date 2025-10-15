@@ -1,0 +1,17 @@
+# DEV Environment Configuration
+
+database:
+  host: dev-db.company.com
+  port: 5432
+  database: financial_dw_dev
+  connection_pool_size: 20
+
+airflow:
+  dag_dir: /opt/airflow/dags
+  parallelism: 16
+  max_active_runs: 3
+
+monitoring:
+  enabled: true
+  metrics_interval: 60
+  alert_threshold: 0.95

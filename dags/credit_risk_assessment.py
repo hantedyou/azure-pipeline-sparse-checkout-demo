@@ -24,7 +24,7 @@ dag = DAG(
     description='Process credit risk assessment for financial analysis',
     schedule_interval='@daily',
     catchup=False,
-    tags=['real_time', 'risk']
+    tags=['risk', 'real_time']
 )
 
 def extract_data():

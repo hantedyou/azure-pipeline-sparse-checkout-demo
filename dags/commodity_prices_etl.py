@@ -24,7 +24,7 @@ dag = DAG(
     description='Process commodity prices etl for financial analysis',
     schedule_interval='@daily',
     catchup=False,
-    tags=['market_data', 'trading']
+    tags=['market_data', 'risk']
 )
 
 def extract_data():

@@ -24,7 +24,7 @@ dag = DAG(
     description='Process futures contracts etl for financial analysis',
     schedule_interval='@daily',
     catchup=False,
-    tags=['compliance', 'risk']
+    tags=['real_time', 'compliance']
 )
 
 def extract_data():

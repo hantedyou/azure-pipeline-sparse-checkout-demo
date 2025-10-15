@@ -24,7 +24,7 @@ dag = DAG(
     description='Process market risk pipeline for financial analysis',
     schedule_interval='@daily',
     catchup=False,
-    tags=['market_data', 'real_time']
+    tags=['risk', 'real_time']
 )
 
 def extract_data():

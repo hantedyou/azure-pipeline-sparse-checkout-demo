@@ -24,7 +24,7 @@ dag = DAG(
     description='Process audit trail ingestion for financial analysis',
     schedule_interval='@daily',
     catchup=False,
-    tags=['reporting', 'risk']
+    tags=['market_data', 'compliance']
 )
 
 def extract_data():

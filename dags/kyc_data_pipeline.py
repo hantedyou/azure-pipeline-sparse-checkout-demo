@@ -24,7 +24,7 @@ dag = DAG(
     description='Process kyc data pipeline for financial analysis',
     schedule_interval='@daily',
     catchup=False,
-    tags=['compliance', 'real_time']
+    tags=['reporting', 'risk']
 )
 
 def extract_data():

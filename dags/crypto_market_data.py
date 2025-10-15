@@ -24,7 +24,7 @@ dag = DAG(
     description='Process crypto market data for financial analysis',
     schedule_interval='@daily',
     catchup=False,
-    tags=['market_data', 'risk']
+    tags=['market_data', 'compliance']
 )
 
 def extract_data():

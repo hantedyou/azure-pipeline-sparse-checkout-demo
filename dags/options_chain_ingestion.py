@@ -24,7 +24,7 @@ dag = DAG(
     description='Process options chain ingestion for financial analysis',
     schedule_interval='@daily',
     catchup=False,
-    tags=['risk', 'market_data']
+    tags=['market_data', 'trading']
 )
 
 def extract_data():

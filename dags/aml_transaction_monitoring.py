@@ -24,7 +24,7 @@ dag = DAG(
     description='Process aml transaction monitoring for financial analysis',
     schedule_interval='@daily',
     catchup=False,
-    tags=['market_data', 'real_time']
+    tags=['compliance', 'risk']
 )
 
 def extract_data():
