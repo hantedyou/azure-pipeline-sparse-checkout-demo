@@ -1,0 +1,333 @@
+# Sparse Checkout Optimized Pipeline
+# Demonstrates selective file checkout approach for faster CI/CD
+name: 'Sparse-Checkout-$(Date:yyyyMMdd)-$(Rev:r)'
+
+parameters:
+- name: agentPoolName
+  displayName: 'Agent Pool Name'
+  type: string
+  default: 'mac-demo-pool'
+  
+- name: agentName
+  displayName: 'Agent Name'
+  type: string
+  default: 'mac-sparse-demo-agent'
+
+- name: deploymentEnvironment
+  displayName: 'Deployment Environment'
+  type: string
+  default: 'demo'
+  values:
+  - demo
+  - dev
+  - staging
+  - prod
+
+trigger: none
+
+variables:
+  - name: dropPath
+    value: '$(Build.ArtifactStagingDirectory)/drop'
+  - name: diffPath
+    value: '$(Build.ArtifactStagingDirectory)/diff'
+  - name: buildNumber
+    value: '$(Build.BuildNumber)'
+  - name: deployListFile
+    value: 'deployment/deploy-list.txt'
+  - name: repositoryUrl
+    value: '$(Build.Repository.Uri)'
+
+jobs:
+- job: 'SparseCheckoutBuild'
+  displayName: 'Sparse Checkout Optimized Build'
+  timeoutInMinutes: 20
+  pool:
+    name: '${{ parameters.agentPoolName }}'
+    demands:
+    - agent.name -equals ${{ parameters.agentName }}
+  
+  steps:
+  # Step 0: Initialize Performance Tracking
+  - script: |
+      echo "=== Sparse Checkout Pipeline Started ==="
+      start_time=$(date +%s)
+      echo "##vso[task.setvariable variable=pipelineStartTime]$start_time"
+      echo "##vso[task.setvariable variable=checkoutStartTime]$start_time"
+      echo "Pipeline started at: $(date)"
+      echo "Build Number: $(buildNumber)"
+      echo "Environment: ${{ parameters.deploymentEnvironment }}"
+      echo "Branch: $(Build.SourceBranchName)"
+    displayName: 'Initialize Performance Timer'
+
+  # Step 1: Sparse Checkout - Only download needed files
+  - checkout: none
+    displayName: 'Skip Default Checkout'
+
+  - script: |
+      echo "=== Sparse Checkout: Selective File Download ==="
+      checkout_start=$(date +%s)
+      
+      git clone \
+        --filter=blob:none \
+        --no-checkout \
+        --depth 1 \
+        --single-branch \
+        --branch $(Build.SourceBranchName) \
+        $(repositoryUrl) \
+        $(Build.SourcesDirectory)
+      
+      cd $(Build.SourcesDirectory)
+      
+      git sparse-checkout init --cone
+      git sparse-checkout set deployment/
+      git checkout $(Build.SourceBranchName)
+      
+      echo "Deployment manifest retrieved"
+      
+      if [ -f "$(deployListFile)" ]; then
+        echo "Processing sparse checkout patterns from $(deployListFile)"
+        
+        grep -v '^#' $(deployListFile) | grep -v '^$' | while read file_path; do
+          echo "$file_path" | cut -d'/' -f1
+        done | sort -u > /tmp/sparse_dirs.txt
+        
+        echo "Sparse checkout patterns:"
+        cat /tmp/sparse_dirs.txt
+        
+        git sparse-checkout set $(cat /tmp/sparse_dirs.txt | tr '\n' ' ')
+        rm -f /tmp/sparse_dirs.txt
+      else
+        echo "Warning: Deploy list not found, using default patterns"
+        git sparse-checkout set dags/ data_model/ metadata/
+      fi
+      
+      git checkout $(Build.SourceBranchName)
+      
+      checkout_end=$(date +%s)
+      checkout_duration=$((checkout_end - checkout_start))
+      
+      echo "=== Sparse Checkout Performance ==="
+      echo "Checkout Duration: ${checkout_duration} seconds"
+      echo "Files Downloaded: $(find . -type f -not -path './.git/*' | wc -l)"
+      echo "Directories: $(find . -type d -not -path './.git/*' | wc -l)"
+      echo "Working Directory Size: $(du -sh . | cut -f1)"
+      echo "Git Directory Size: $(du -sh .git | cut -f1)"
+      
+      downloaded_files=$(find . -type f -not -path './.git/*' | wc -l)
+      if [ -f "$(deployListFile)" ]; then
+        needed_files=$(grep -v '^#' $(deployListFile) | grep -v '^$' | wc -l)
+        echo "Files Actually Needed: $needed_files"
+        echo "Files Downloaded: $downloaded_files"
+        
+        if [ $downloaded_files -gt 0 ]; then
+          efficiency=$(echo "scale=1; $needed_files * 100 / $downloaded_files" | bc -l 2>/dev/null || echo "100")
+          echo "Download Efficiency: ${efficiency}%"
+        fi
+      fi
+      
+      echo "##vso[task.setvariable variable=checkoutDuration]$checkout_duration"
+      
+    displayName: 'Sparse Checkout - Selective Download'
+    env:
+      SYSTEM_ACCESSTOKEN: $(System.AccessToken)
+
+  # Step 2: Verify Sparse Checkout
+  - script: |
+      cd $(Build.SourcesDirectory)
+      
+      echo "=== Verifying Sparse Checkout ==="
+      echo "Current sparse-checkout configuration:"
+      git sparse-checkout list
+      
+      echo ""
+      echo "Downloaded file structure (first 20):"
+      find . -type f -not -path './.git/*' | head -20
+      
+      echo ""
+      echo "Checking deploy-list.txt files availability:"
+      missing_count=0
+      found_count=0
+      
+      if [ -f "$(deployListFile)" ]; then
+        while IFS= read -r file_path; do
+          if [ -f "$file_path" ]; then
+            found_count=$((found_count + 1))
+          else
+            echo "Missing: $file_path"
+            missing_count=$((missing_count + 1))
+          fi
+        done < <(grep -v '^#' $(deployListFile) | grep -v '^$')
+        
+        echo "Files found: $found_count"
+        echo "Files missing: $missing_count"
+        
+        if [ $missing_count -gt 0 ]; then
+          echo "Warning: Some files from deploy-list.txt were not checked out"
+        else
+          echo "Success: All required files are available"
+        fi
+      fi
+      
+    displayName: 'Verify Sparse Checkout'
+
+  # Step 3: Create Drop Package
+  - script: |
+      echo "=== Creating Deployment Drop Package ==="
+      drop_start=$(date +%s)
+      
+      cd $(Build.SourcesDirectory)
+      
+      mkdir -p $(dropPath)
+      mkdir -p $(diffPath)
+      
+      if [ -f "$(deployListFile)" ]; then
+        echo "Processing deployment list from $(deployListFile)"
+        grep -v '^#' $(deployListFile) | grep -v '^$' > /tmp/clean_deploy_list.txt
+        
+        while IFS= read -r file_path; do
+          if [ -f "$file_path" ]; then
+            target_dir="$(dropPath)/$(dirname "$file_path")"
+            mkdir -p "$target_dir"
+            cp "$file_path" "$(dropPath)/$file_path"
+            echo "Added to drop: $file_path"
+          else
+            echo "Warning: File not found: $file_path"
+          fi
+        done < /tmp/clean_deploy_list.txt
+        
+        rm -f /tmp/clean_deploy_list.txt
+        drop_files=$(find $(dropPath) -type f | wc -l)
+        echo "Drop package created with $drop_files files"
+      else
+        echo "Deploy list not found, creating drop with all available files"
+        find . -type f -not -path './.git/*' -not -path './deployment/*' | while read file; do
+          relative_path="${file#./}"
+          target_dir="$(dropPath)/$(dirname "$relative_path")"
+          mkdir -p "$target_dir"
+          cp "$file" "$(dropPath)/$relative_path"
+        done
+      fi
+      
+      cd $(dropPath)
+      tar -czf ../drop-$(buildNumber).tar.gz .
+      cd - > /dev/null
+      
+      drop_end=$(date +%s)
+      drop_duration=$((drop_end - drop_start))
+      drop_size=$(du -sh $(dropPath) | cut -f1)
+      
+      echo "Drop creation time: ${drop_duration} seconds"
+      echo "Drop size: $drop_size"
+      
+      echo "##vso[task.setvariable variable=dropDuration]$drop_duration"
+    displayName: 'Create Deployment Drop Package'
+
+  # Step 4: Generate Diff Files
+  - script: |
+      echo "=== Generating Diff Files ==="
+      diff_start=$(date +%s)
+      
+      cd $(Build.SourcesDirectory)
+      
+      echo "Content Diff Report - Build $(buildNumber)" > $(diffPath)/Content_Diff.txt
+      echo "Generated at: $(date)" >> $(diffPath)/Content_Diff.txt
+      echo "Deployment Environment: ${{ parameters.deploymentEnvironment }}" >> $(diffPath)/Content_Diff.txt
+      echo "Checkout Method: Sparse Checkout (Optimized)" >> $(diffPath)/Content_Diff.txt
+      echo "" >> $(diffPath)/Content_Diff.txt
+      echo "DEPLOYMENT SUMMARY" >> $(diffPath)/Content_Diff.txt
+      echo "Build: $(buildNumber)" >> $(diffPath)/Content_Diff.txt
+      echo "Environment: ${{ parameters.deploymentEnvironment }}" >> $(diffPath)/Content_Diff.txt
+      echo "Files in Drop: $(find $(dropPath) -type f | wc -l)" >> $(diffPath)/Content_Diff.txt
+      echo "Checkout Method: Sparse Checkout" >> $(diffPath)/Content_Diff.txt
+      echo "Branch: $(Build.SourceBranchName)" >> $(diffPath)/Content_Diff.txt
+      echo "" >> $(diffPath)/Content_Diff.txt
+      echo "CHANGED FILES" >> $(diffPath)/Content_Diff.txt
+      
+      find $(dropPath) -type f | sed 's|$(dropPath)/||' | while read file; do
+        echo "M    $file" >> $(diffPath)/Content_Diff.txt
+      done
+      
+      echo "File Diff Report - Build $(buildNumber)" > $(diffPath)/File_Diff.txt
+      echo "Generated at: $(date)" >> $(diffPath)/File_Diff.txt
+      echo "Checkout Method: Sparse Checkout" >> $(diffPath)/File_Diff.txt
+      echo "" >> $(diffPath)/File_Diff.txt
+      
+      find $(dropPath) -type f | while read file; do
+        relative_path=$(echo "$file" | sed 's|$(dropPath)/||')
+        file_size=$(stat -f%z "$file" 2>/dev/null || stat -c%s "$file" 2>/dev/null || echo "unknown")
+        echo "$relative_path|$file_size" >> $(diffPath)/File_Diff.txt
+      done
+      
+      diff_end=$(date +%s)
+      diff_duration=$((diff_end - diff_start))
+      
+      echo "Diff generation time: ${diff_duration} seconds"
+      
+      echo "##vso[task.setvariable variable=diffDuration]$diff_duration"
+    displayName: 'Generate Diff Files'
+
+  # Step 5: Publish Drop Artifact
+  - task: PublishBuildArtifacts@1
+    displayName: 'Publish Artifact: Drop'
+    inputs:
+      pathToPublish: '$(dropPath)'
+      artifactName: 'drop'
+      publishLocation: 'Container'
+
+  # Step 6: Publish Diff Artifact
+  - task: PublishBuildArtifacts@1
+    displayName: 'Publish Artifact: Diff'
+    inputs:
+      pathToPublish: '$(diffPath)'
+      artifactName: 'diff'
+      publishLocation: 'Container'
+
+  # Step 7: Performance Summary
+  - script: |
+      echo "=== SPARSE CHECKOUT PIPELINE PERFORMANCE SUMMARY ==="
+      
+      pipeline_start=$(pipelineStartTime)
+      pipeline_end=$(date +%s)
+      total_duration=$((pipeline_end - pipeline_start))
+      
+      checkout_duration=$(checkoutDuration)
+      drop_duration=$(dropDuration)
+      diff_duration=$(diffDuration)
+      
+      echo "Total Pipeline Duration: ${total_duration} seconds"
+      echo "  - Sparse Checkout Time: ${checkout_duration} seconds"
+      echo "  - Drop Creation: ${drop_duration} seconds"
+      echo "  - Diff Generation: ${diff_duration} seconds"
+      
+      cd $(Build.SourcesDirectory)
+      
+      echo ""
+      echo "Repository Analysis:"
+      echo "  - Working Directory Size: $(du -sh . | cut -f1)"
+      echo "  - Drop Size: $(du -sh $(dropPath) | cut -f1)"
+      echo "  - Files Downloaded: $(find . -type f -not -path './.git/*' | wc -l)"
+      echo "  - Files in Drop: $(find $(dropPath) -type f | wc -l)"
+      echo "  - Git Objects Downloaded: $(find .git/objects -type f 2>/dev/null | wc -l)"
+      
+      echo ""
+      echo "OPTIMIZATION BENEFITS"
+      downloaded_files=$(find . -type f -not -path './.git/*' | wc -l)
+      needed_files=$(find $(dropPath) -type f | wc -l)
+      
+      if [ $downloaded_files -gt 0 ]; then
+        efficiency=$(echo "scale=1; $needed_files * 100 / $downloaded_files" | bc -l)
+        echo "Download Efficiency: ${efficiency}%"
+        echo "Precision: Downloaded only what we need!"
+      fi
+      
+      echo ""
+      echo "Key Optimizations Applied:"
+      echo "  - filter=blob:none: Reduced object transfer"
+      echo "  - depth 1: No history download"
+      echo "  - Sparse checkout: Only required directories"
+      echo "  - Single branch: No unnecessary refs"
+      
+      echo ""
+      echo "Note: Azure DevOps will automatically clean up the agent workspace."
+      
+    displayName: 'Performance Summary & Metrics'
