@@ -78,29 +78,36 @@ jobs:
       
       cd $(Build.SourcesDirectory)
       
-      git sparse-checkout init --cone
-      git sparse-checkout set deployment/
+      # File-level sparse checkout (no cone mode)
+      git sparse-checkout init --no-cone
+
+      # First, checkout only the deployment directory to get deploy-list.txt
+      echo "deployment/" > .git/info/sparse-checkout
       git checkout $(Build.SourceBranchName)
-      
+
       echo "Deployment manifest retrieved"
-      
+
       if [ -f "$(deployListFile)" ]; then
-        echo "Processing sparse checkout patterns from $(deployListFile)"
-        
-        grep -v '^#' $(deployListFile) | grep -v '^$' | while read file_path; do
-          echo "$file_path" | cut -d'/' -f1
-        done | sort -u > /tmp/sparse_dirs.txt
-        
-        echo "Sparse checkout patterns:"
-        cat /tmp/sparse_dirs.txt
-        
-        git sparse-checkout set $(cat /tmp/sparse_dirs.txt | tr '\n' ' ')
-        rm -f /tmp/sparse_dirs.txt
+        echo "Processing file-level sparse checkout from $(deployListFile)"
+
+        # Write deployment directory and individual files to sparse-checkout
+        echo "deployment/" > .git/info/sparse-checkout
+        grep -v '^#' $(deployListFile) | grep -v '^$' >> .git/info/sparse-checkout
+
+        echo "Sparse checkout patterns (file-level):"
+        cat .git/info/sparse-checkout | head -20
+
+        file_count=$(grep -v '^#' $(deployListFile) | grep -v '^$' | wc -l)
+        echo "Total files to checkout: $file_count (plus deployment/)"
       else
-        echo "Warning: Deploy list not found, using default patterns"
-        git sparse-checkout set dags/ data_model/ metadata/
+        echo "Warning: Deploy list not found, using default directory patterns"
+        echo "deployment/" > .git/info/sparse-checkout
+        echo "dags/" >> .git/info/sparse-checkout
+        echo "data_model/" >> .git/info/sparse-checkout
+        echo "metadata/" >> .git/info/sparse-checkout
       fi
-      
+
+      # Apply the file-level sparse checkout
       git checkout $(Build.SourceBranchName)
       
       checkout_end=$(date +%s)
