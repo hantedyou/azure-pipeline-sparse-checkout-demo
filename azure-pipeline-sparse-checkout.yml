@@ -81,8 +81,8 @@ jobs:
       # File-level sparse checkout (no cone mode)
       git sparse-checkout init --no-cone
 
-      # First, checkout only the deployment directory to get deploy-list.txt
-      echo "deployment/" > .git/info/sparse-checkout
+      # First, checkout only deploy-list.txt to read the manifest
+      echo "$(deployListFile)" > .git/info/sparse-checkout
       git checkout $(Build.SourceBranchName)
 
       echo "Deployment manifest retrieved"
@@ -90,15 +90,14 @@ jobs:
       if [ -f "$(deployListFile)" ]; then
         echo "Processing file-level sparse checkout from $(deployListFile)"
 
-        # Write deployment directory and individual files to sparse-checkout
-        echo "deployment/" > .git/info/sparse-checkout
-        grep -v '^#' $(deployListFile) | grep -v '^$' >> .git/info/sparse-checkout
+        # Write only the individual files to sparse-checkout (deploy-list.txt not needed in final package)
+        grep -v '^#' $(deployListFile) | grep -v '^$' > .git/info/sparse-checkout
 
         echo "Sparse checkout patterns (file-level):"
         cat .git/info/sparse-checkout | head -20
 
         file_count=$(grep -v '^#' $(deployListFile) | grep -v '^$' | wc -l)
-        echo "Total files to checkout: $file_count (plus deployment/)"
+        echo "Total files to checkout: $file_count"
       else
         echo "Warning: Deploy list not found, using default directory patterns"
         echo "deployment/" > .git/info/sparse-checkout
