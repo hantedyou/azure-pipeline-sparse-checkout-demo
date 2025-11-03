@@ -45,6 +45,8 @@ jobs:
     name: '${{ parameters.agentPoolName }}'
     demands:
     - agent.name -equals ${{ parameters.agentName }}
+  workspace:
+    clean: all
   
   steps:
   # Step 0: Initialize Performance Tracking
