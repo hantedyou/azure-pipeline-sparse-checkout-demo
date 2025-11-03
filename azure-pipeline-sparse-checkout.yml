@@ -336,6 +336,16 @@ jobs:
       echo "  - Single branch: No unnecessary refs"
       
       echo ""
-      echo "Note: Azure DevOps will automatically clean up the agent workspace."
-      
+      echo "Workspace cleanup will run after successful job completion."
+
     displayName: 'Performance Summary & Metrics'
+
+  # Step 8: Post-Job Cleanup (Self-Hosted Agent)
+  - task: DeleteFiles@1
+    displayName: 'Post-Job Cleanup: Clean Workspace'
+    condition: succeeded()
+    inputs:
+      SourceFolder: '$(Agent.BuildDirectory)'
+      Contents: |
+        **/*
+      RemoveDotFiles: true
