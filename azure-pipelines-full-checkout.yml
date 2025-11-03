@@ -34,6 +34,8 @@ variables:
     value: '$(Build.BuildNumber)'
   - name: deployListFile
     value: 'deployment/deploy-list.txt'
+  - name: repositoryUrl
+    value: '$(Build.Repository.Uri)'
 
 jobs:
 - job: 'TraditionalCheckoutBuild'
@@ -56,11 +58,11 @@ jobs:
       echo "Environment: ${{ parameters.deploymentEnvironment }}"
     displayName: 'Initialize Performance Timer'
 
-  # Step 1: Full Repository Checkout (This is the bottleneck)
+  # Step 1: Full Repository Checkout
   - checkout: self
-    displayName: 'Full Repository Checkout - Complete History'
-    fetchDepth: 0
-    fetchTags: true
+    displayName: 'Full Repository Checkout'
+    fetchDepth: 1
+    fetchTags: false
     clean: true
 
   # Step 2: Analyze Checkout Performance
@@ -198,36 +200,56 @@ jobs:
   # Step 7: Performance Summary
   - script: |
       echo "=== TRADITIONAL PIPELINE PERFORMANCE SUMMARY ==="
-      
+
       pipeline_start=$(pipelineStartTime)
       pipeline_end=$(date +%s)
       total_duration=$((pipeline_end - pipeline_start))
-      
+
       checkout_duration=$(checkoutDuration)
       drop_duration=$(dropDuration)
       diff_duration=$(diffDuration)
-      
+
       echo "Total Pipeline Duration: ${total_duration} seconds"
       echo "  - Checkout Time: ${checkout_duration} seconds"
       echo "  - Drop Creation: ${drop_duration} seconds"
       echo "  - Diff Generation: ${diff_duration} seconds"
+
+      cd $(Build.SourcesDirectory)
+
       echo ""
       echo "Repository Analysis:"
       echo "  - Repository Size: $(du -sh . | cut -f1)"
       echo "  - Drop Size: $(du -sh $(dropPath) | cut -f1)"
-      echo "  - Files Downloaded: $(find . -type f | wc -l)"
+      echo "  - Files Downloaded: $(find . -type f -not -path './.git/*' | wc -l)"
       echo "  - Files Actually Needed: $(find $(dropPath) -type f | wc -l)"
+      echo "  - Git Objects Downloaded: $(find .git/objects -type f 2>/dev/null | wc -l)"
       echo ""
       echo "INEFFICIENCY ANALYSIS"
-      
+
       needed_files=$(find $(dropPath) -type f | wc -l)
-      total_files=$(find . -type f | wc -l)
+      total_files=$(find . -type f -not -path './.git/*' | wc -l)
       wasted_files=$((total_files - needed_files))
-      efficiency=$(echo "scale=1; $needed_files * 100 / $total_files" | bc -l)
-      
-      echo "Files Downloaded but Not Needed: $wasted_files"
-      echo "Deployment Efficiency: ${efficiency}%"
+
+      if [ $total_files -gt 0 ]; then
+        efficiency=$(echo "scale=1; $needed_files * 100 / $total_files" | bc -l)
+        echo "Files Downloaded but Not Needed: $wasted_files"
+        echo "Deployment Efficiency: ${efficiency}%"
+      fi
+
       echo ""
-      echo "Note: Azure DevOps will automatically clean up the agent workspace."
-      
+      echo "Workspace cleanup will run after successful job completion."
+
     displayName: 'Performance Summary & Metrics'
+
+  # Step 8: Post-Job Cleanup (Self-Hosted Agent)
+  - task: DeleteFiles@1
+    displayName: 'Post-Job Cleanup: Clean Workspace'
+    condition: succeeded()
+    inputs:
+      SourceFolder: '$(Agent.BuildDirectory)'
+      Contents: |
+        a/**
+        s/**
+        b/**
+        TestResults/**
+      RemoveDotFiles: true
