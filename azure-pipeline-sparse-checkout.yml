@@ -347,5 +347,8 @@ jobs:
     inputs:
       SourceFolder: '$(Agent.BuildDirectory)'
       Contents: |
-        **/*
+        a/**
+        s/**
+        b/**
+        TestResults/**
       RemoveDotFiles: true
